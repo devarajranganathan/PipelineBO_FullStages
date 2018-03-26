@@ -1,0 +1,188 @@
+def strFile = "c.vbs"
+def strFile_A = "a.vbs"
+
+pipeline {
+    agent{
+        node{
+            label 'master'
+        }
+    } 
+    
+    environment{
+        strFilePath = "C:\\Devaraj\\Test\\"
+    }
+    
+    stages {
+        stage('when-allof-processstepreturnvalue') {
+            
+           when{
+               
+               allOf{
+                    expression{
+                        script{
+                            strFileName = "b.vbs"
+                            def r = bat script: 'Wscript "C:\\Devaraj\\Test\\b.vbs"', returnStatus: true, returnStdout: true                
+                            return r==0                        
+                        }
+                    }
+               }
+            }                
+            
+            steps {
+                
+                 //echo 'Hello world - Run 3!' 
+                script{
+                    strFileName = "a.vbs"
+                }
+                //bat("Wscript ${strFilePath}" + "${strFileName}")
+                bat(script: 'Wscript "C:\\Devaraj\\Test\\a.vbs"', returnStatus: true, returnStdout: true)
+            }
+        }
+        
+        stage('Dir - pwd - Env_var usage'){
+            
+            when{
+                expression{
+                    fileExists("C:\\Devaraj\\Test\\a.vbs")
+                }
+            }
+            
+            steps{
+
+                ws(dir: "C:\\Devaraj\\Test\\"){
+                    
+                    script{
+                        strFile1 = "c.vbs"
+                    }                    
+                    
+                    bat(script: "${strFile}", returnStatus: true, returnStdout: true)
+                    //bat("${strFile}")                    
+                }
+                
+                dir("C:\\Devaraj\\Test\\Test1\\"){
+                    bat(script: "${strFile}", returnStatus: true, returnStdout: true)
+                    echo(pwd())
+                }
+
+            }
+        }
+        
+        stage('Delete Dir'){
+            
+            steps{
+                ws(dir: "C:\\Devaraj\\Test\\"){
+                    dir("C:\\Devaraj\\Test\\Test1\\Test2\\"){
+                        deleteDir()        
+                    }
+                }
+                
+            }
+            
+        }
+        
+        stage('timeout-waitUntil'){
+            
+            steps{
+                
+                timeout(time:2,unit:'MINUTES'){
+                    waitUntil{
+                        echo("Waiting --- ")
+                        fileExists("C:\\Devaraj\\Test\\f.txt")
+                    }
+                }
+            }
+        }
+        
+        stage('sleep'){
+            steps{
+                sleep(time:20,unit:'SECONDS')
+                 dir("C:\\Devaraj\\Test\\Test1\\"){
+                    bat(script: "${strFile}", returnStatus: true, returnStdout: true)
+                }               
+            }
+        }
+        
+        stage('stash'){
+            steps{
+                dir("C:\\Devaraj\\Test\\Test1\\"){
+                    stash includes:'c.vbs',name:'filestorage'
+                }
+            }
+        }
+        
+        stage('unstash'){
+            steps{
+                dir("C:\\Devaraj\\Test\\Test2\\"){
+                    unstash 'filestorage'
+                    bat(script: "${strFile}", returnStatus: true, returnStdout: true)                    
+                }
+            }
+        }
+        
+        stage('ErrorSignal'){
+            when{
+                not{
+                    expression{
+                        fileExists("C:\\Devaraj\\Test\\g.txt")
+                    }
+                }
+            }
+            steps{
+                catchError{
+                    error("triggering error")
+                }
+                script{
+                    if(pwd()!="C:\\Devaraj\\Test\\Test2\\")
+                        dir("C:\\Devaraj\\Test\\Test2\\"){
+                            bat(script: "${strFile}", returnStatus: true, returnStdout: true)                                        
+                        }                        
+                }
+
+            }
+        }
+        
+        stage('Parallel'){
+            
+            steps{
+                
+                parallel(
+                    
+                    "Exec_A":{
+                        node(label:'Sid_Machine'){
+                            ws(dir: "C:\\Devaraj\\Test\\"){
+                                bat(script: "${strFile_A}", returnStatus: true, returnStdout: true)                                            
+                            }
+                        }
+                        
+                    },
+                    "Exec_C":{
+                        node(label:'master'){
+                            ws(dir: "C:\\Devaraj\\Test\\Test2\\"){
+                                bat(script: "${strFile}", returnStatus: true, returnStdout: true)                                            
+                            }
+                        }
+                    }
+                    
+                )
+                
+            }
+            
+        }
+        
+        stage('Archiving'){
+            
+            steps{
+                ws(dir: "C:\\Devaraj\\Test\\Test1\\"){
+                    archiveArtifacts artifacts:'**/*.txt'                    
+                }
+            }
+        }
+        
+        stage('closure confirmation'){
+            
+            steps{
+                input message: 'Should we continue?', ok:'Yes, we should'
+            }
+        }
+    }
+}
